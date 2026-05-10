@@ -1,0 +1,28 @@
+# Python / Backend
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+
+# Database
+vault.db
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+npm-debug.log*
+
+# Test files generated during demo / previous versions
+*.pem
+blood_test.txt
+decrypted_*
+test_flow.py
+server.py
+client.py
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
