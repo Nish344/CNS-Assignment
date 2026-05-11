@@ -1,20 +1,50 @@
-# Python / Backend
+# Python / backend
 venv/
+.venv/
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Env & secrets (if added later)
 .env
+.env.*
+!.env.example
 
-# Database
+# SQLite and journals
 vault.db
+vault.db-journal
+vault.db-wal
+vault.db-shm
+*.sqlite3
+*.db-journal
 
-# Node / Frontend
+# Node / frontend
 frontend/node_modules/
 frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/.eslintcache
 frontend/.env
+frontend/.env.*
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# Test / tooling
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+.nox/
 
-# Test files generated during demo / previous versions
+# Demo artifacts (avoid committing accidental exports)
 *.pem
 blood_test.txt
 decrypted_*
@@ -22,7 +52,10 @@ test_flow.py
 server.py
 client.py
 
-# OS / Editor
+# OS / editor
 .DS_Store
 .idea/
+*.swp
+*.swo
+*~
 .vscode/

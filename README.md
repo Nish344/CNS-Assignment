@@ -1,72 +1,85 @@
-# Encrypted Medical Records Vault 🏥
+# Encrypted Medical Records Vault
 
-A zero-knowledge, end-to-end encrypted web application designed for securely sharing medical records. This project demonstrates advanced cryptographic concepts including **Hybrid Cryptography**, **Proxy Re-encryption**, and **Client-Side Key Management** to ensure that the central server *never* sees the plaintext medical data or the decryption keys.
+Zero-knowledge, end-to-end encrypted demo for securely sharing medical records. The Flask server acts as blind storage only: it never sees plaintext records or plaintext AES keys. Cryptography runs in the browser via the **Web Crypto API**.
 
-## 🚀 Key Features
+For a presenter-friendly walkthrough (architecture, crypto, demo script), see **[PRESENTATION.md](PRESENTATION.md)**.
 
-- **Zero-Knowledge Server:** The backend (Flask + SQLite) acts only as a dumb storage vault. It stores base64-encoded ciphertexts and encrypted session keys.
-- **Client-Side Encryption:** All cryptographic operations happen exclusively in the browser using the native `window.crypto.subtle` API.
-- **Hybrid Cryptography:**
-  - Files are encrypted using symmetric **AES-256-GCM** for high performance and authenticated encryption (MAC tag).
-  - AES session keys are encrypted ("wrapped") using asymmetric **RSA-2048-OAEP**.
-- **Digital Signatures:** Encrypted payloads are signed by the patient using **RSA-PSS (SHA-256)**, allowing the doctor to verify authenticity and detect tampering.
-- **Proxy Re-encryption Pattern:** When a doctor requests access, the patient downloads their encrypted AES key, decrypts it locally, and re-encrypts it with the doctor's public key. The server facilitates the key exchange without ever possessing the plaintext key.
-- **Role-Based Access Control:** Separate flows for `Patient` and `Doctor` roles.
+## Features
 
-## 🛠️ Technology Stack
+- **Vault UI (`/`):** Patient upload (encrypt + sign + upload ciphertext); doctor request access + download after approval; client-side decrypt and signature verify.
+- **Live status (`/status`):** Read-only dashboard fed by `GET /api/vault_status` — ciphertext fingerprints, approximate storage footprint, wrapped-key holders, access-request counts. No plaintext exposed.
+- **Hybrid crypto:** **AES-256-GCM** for file data; **RSA-2048-OAEP** for wrapping the AES key; **RSA-PSS (SHA-256)** for patient signatures.
+- **Proxy re-encryption flow:** Patient re-wraps the AES key for the doctor in the browser; server only stores the new wrapped blob.
 
-- **Frontend:** React, Vite, Vanilla CSS (Glassmorphism UI)
-- **Frontend Crypto:** Web Crypto API (`window.crypto.subtle`)
-- **Backend:** Python, Flask, Flask-CORS
-- **Database:** SQLite3
+## Stack
 
-## ⚙️ Installation & Setup
+| Layer | Tech |
+|--------|------|
+| Frontend | React, Vite, React Router, CSS |
+| Crypto | `window.crypto.subtle` |
+| Backend | Python, Flask, Flask-CORS |
+| Data | SQLite (`vault.db`) |
 
-### 1. Backend Setup
-Create a virtual environment and install the Python dependencies:
+## Prerequisites
+
+- **Python 3** with `venv`
+- **Node.js** and npm (for the Vite app)
+
+## Setup
+
+### Backend
+
+From the repository root:
+
 ```bash
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install Flask flask-cors
 ```
 
-### 2. Frontend Setup
-Navigate to the frontend directory and install the Node modules:
+### Frontend
+
 ```bash
 cd frontend
 npm install
 ```
 
-## 🏃‍♂️ Running the Application
+## Run (two terminals)
 
-You must run both the backend and the frontend simultaneously. Open two separate terminal windows.
+**Terminal 1 — API**
 
-**Terminal 1 (Backend):**
 ```bash
 source venv/bin/activate
 python3 app.py
 ```
-*The Flask API will start on `http://127.0.0.1:5000`.*
 
-**Terminal 2 (Frontend):**
+Serving at **http://127.0.0.1:5000**.
+
+**Terminal 2 — UI**
+
 ```bash
 cd frontend
 npm run dev -- --host
 ```
-*Vite will start the dev server and automatically generate a local SSL certificate so the Web Crypto API functions properly.*
 
-## 🎬 How to Present the Demo
+Open the HTTPS URL Vite prints (often **https://localhost:5173**). Accept the self-signed certificate — it is required for Web Crypto over a secure origin.
 
-This application is designed to be demonstrated locally using two devices on the same Wi-Fi network.
+| Route | Purpose |
+|--------|---------|
+| `/` | Login, patient/doctor vault |
+| `/status` | Live vault metadata visualization |
 
-1. **Start the servers** using the commands above. The frontend terminal will give you a **Network URL** (e.g., `https://192.168.x.x:5173`).
-2. **Device 1 (Doctor):** On your host machine, open your browser to `https://localhost:5173`. Select the **Doctor** role and register.
-3. **Device 2 (Patient):** Have a friend connect to your Wi-Fi, open their phone/laptop browser, and navigate to the Network URL (`https://192.168.x.x:5173`). Have them select the **Patient** role and register. *(Note: Accept the "Connection is not private" warning, as this uses a local self-signed certificate for the demo).*
-4. **The Flow:**
-   - **Upload:** The patient selects a dummy medical record and clicks upload. The browser encrypts it and sends ciphertext to the vault.
-   - **Request:** The doctor refreshes their global records list, sees the new encrypted file, and clicks "Request Access".
-   - **Approve:** The patient checks pending requests and clicks "Approve". Their browser securely re-encrypts the AES key for the doctor.
-   - **Download:** The doctor clicks "Download". Their browser fetches the encrypted file and their specific encrypted AES key, decrypts everything locally, verifies the patient's signature, and triggers a file download of the plaintext record.
+`/api/*` requests from the dev server are **proxied** to Flask (see `frontend/vite.config.js`), so keep both processes running.
 
-## 🔒 Security Notes
-*For the purpose of a seamless local demo, RSA private keys are temporarily stored in `sessionStorage`. In a production web application, private keys should be managed via hardware tokens, WebAuthn, or secure enclaves to prevent XSS exfiltration.*
+## Two-device demo (same network)
+
+1. Start backend and frontend; note the **Network** URL from Vite (e.g. `https://192.168.x.x:5173`).
+2. **Doctor:** `https://localhost:5173` — register as Doctor.
+3. **Patient:** Network URL on a second device — register as Patient (trust the certificate warning for the demo).
+4. Patient uploads a file → doctor sees ciphertext metadata only → **Request Access** → patient **Approve** → doctor **Download** (decrypt + verify signature in-browser).
+
+Optional: leave **`/status`** open on the presenter screen while the demo runs.
+
+## Security note (demo only)
+
+Private keys live in **`sessionStorage`** for convenience. Production systems should use hardware-backed keys, WebAuthn, or other designs that mitigate XSS and device theft — not browser session storage alone.

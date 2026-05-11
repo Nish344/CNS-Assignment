@@ -1,17 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as crypto from './cryptoUtils';
 
 const API_BASE = '/api';
 
-function App() {
-  const [user, setUser] = useState(null); // { username, role }
-
-  useEffect(() => {
+function readStoredUser() {
+  try {
     const savedUser = sessionStorage.getItem('vault_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-  }, []);
+    return savedUser ? JSON.parse(savedUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+function App() {
+  const [user, setUser] = useState(readStoredUser); // { username, role }
 
   const handleLogin = (userData) => {
     sessionStorage.setItem('vault_user', JSON.stringify(userData));
@@ -31,11 +33,15 @@ function App() {
       ) : (
         <div className="dashboard-container">
           <header className="header animate-fade-in">
-            <div>
+            <div className="header-main">
+              <p className="eyebrow">Session</p>
               <h1>Encrypted Vault</h1>
-              <p>Logged in as: <strong>{user.username}</strong> ({user.role})</p>
+              <p className="header-sub">
+                Signed in as <strong>{user.username}</strong>
+                <span className={`role-pill role-pill--${user.role}`}>{user.role}</span>
+              </p>
             </div>
-            <button className="outline" onClick={handleLogout}>Logout</button>
+            <button type="button" className="outline" onClick={handleLogout}>Logout</button>
           </header>
           
           {user.role === 'patient' ? <PatientDashboard user={user} /> : <DoctorDashboard user={user} />}
@@ -81,7 +87,7 @@ function Auth({ onLogin }) {
       } else {
         setMsg(data.message || 'Error occurred');
       }
-    } catch (err) {
+    } catch {
       setMsg('Network error');
     }
     setLoading(false);
@@ -89,8 +95,11 @@ function Auth({ onLogin }) {
 
   return (
     <div className="auth-container glass-panel animate-fade-in" style={{marginTop: '10vh'}}>
+      <p className="eyebrow">Client-side crypto</p>
       <h1>Zero-Knowledge Vault</h1>
-      <p>Secure Medical Records Sharing</p>
+      <p className="lede auth-lede">
+        RSA keys are generated in your browser. The server only stores ciphertext and wrapped keys.
+      </p>
       <br/>
       <form onSubmit={handleSubmit}>
         <input 
@@ -120,24 +129,29 @@ function PatientDashboard({ user }) {
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    fetchRecords();
-    fetchRequests();
-    const interval = setInterval(fetchRequests, 5000); // poll for requests
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     const res = await fetch(`${API_BASE}/records?role=patient&username=${encodeURIComponent(user.username)}`);
     const data = await res.json();
     if (data.status === 'success') setRecords(data.records);
-  };
+  }, [user.username]);
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     const res = await fetch(`${API_BASE}/pending_requests?patient_id=${encodeURIComponent(user.username)}`);
     const data = await res.json();
     if (data.status === 'success') setRequests(data.requests);
-  };
+  }, [user.username]);
+
+  useEffect(() => {
+    const boot = setTimeout(() => {
+      void fetchRecords();
+      void fetchRequests();
+    }, 0);
+    const interval = setInterval(() => void fetchRequests(), 5000);
+    return () => {
+      clearTimeout(boot);
+      clearInterval(interval);
+    };
+  }, [fetchRecords, fetchRequests]);
 
   const handleUpload = async () => {
     if (!file) return;
@@ -235,8 +249,8 @@ function PatientDashboard({ user }) {
 
   return (
     <div className="dashboard">
-      <div className="glass-panel animate-fade-in">
-        <h2>Upload Record</h2>
+      <div className="glass-panel animate-fade-in dashboard-card">
+        <h2 className="section-title">Upload record</h2>
         <div className="file-upload" onClick={() => document.getElementById('file-input').click()}>
           <input 
             type="file" 
@@ -252,7 +266,7 @@ function PatientDashboard({ user }) {
         </button>
         {msg.text && <div className={`notification ${msg.type === 'error' ? 'error' : ''}`}>{msg.text}</div>}
         
-        <h2 style={{marginTop: '2rem'}}>My Encrypted Vault</h2>
+        <h2 className="section-title" style={{marginTop: '2rem'}}>My encrypted vault</h2>
         <ul className="record-list">
           {records.length === 0 && <p>No records found.</p>}
           {records.map(r => (
@@ -264,8 +278,8 @@ function PatientDashboard({ user }) {
         </ul>
       </div>
 
-      <div className="glass-panel animate-fade-in" style={{animationDelay: '0.1s'}}>
-        <h2>Pending Access Requests</h2>
+      <div className="glass-panel animate-fade-in dashboard-card" style={{animationDelay: '0.1s'}}>
+        <h2 className="section-title">Pending access requests</h2>
         {requests.length === 0 ? <p>No pending requests.</p> : (
           <ul className="record-list">
             {requests.map(req => (
@@ -292,15 +306,16 @@ function DoctorDashboard({ user }) {
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [downloading, setDownloading] = useState(false);
 
-  useEffect(() => {
-    fetchRecords();
-  }, []);
-
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     const res = await fetch(`${API_BASE}/records?role=doctor`);
     const data = await res.json();
     if (data.status === 'success') setRecords(data.records);
-  };
+  }, []);
+
+  useEffect(() => {
+    const boot = setTimeout(() => void fetchRecords(), 0);
+    return () => clearTimeout(boot);
+  }, [fetchRecords]);
 
   const handleRequestAccess = async (recordId) => {
     const res = await fetch(`${API_BASE}/request_access`, {
@@ -375,8 +390,11 @@ function DoctorDashboard({ user }) {
   };
 
   return (
-    <div className="glass-panel animate-fade-in">
-      <h2>Global Medical Records Database</h2>
+    <div className="glass-panel animate-fade-in dashboard-card">
+      <h2 className="section-title">Global medical records</h2>
+      <p className="section-sub doctor-hint">
+        Encrypted blobs listed below — request access, then download decrypts only after approval.
+      </p>
       {msg.text && <div className={`notification ${msg.type === 'error' ? 'error' : ''}`}>{msg.text}</div>}
       <br/>
       <ul className="record-list">

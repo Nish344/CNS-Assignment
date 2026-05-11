@@ -1,8 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
-import base64
-import os
+import hashlib
 from datetime import datetime
 
 app = Flask(__name__)
@@ -105,6 +104,73 @@ def list_records():
         records = [{"id": row['id'], "patient_id": row['patient_id'], "filename": row['filename']} for row in c.fetchall()]
     conn.close()
     return jsonify({"status": "success", "records": records})
+
+@app.route('/api/vault_status', methods=['GET'])
+def vault_status():
+    """Public metadata-only snapshot for the /status dashboard: ciphertext fingerprints,
+    sizes, key wrappers, and request states — never plaintext."""
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT COUNT(*) AS n FROM records")
+    total_records = c.fetchone()["n"]
+    c.execute("SELECT COUNT(*) AS n FROM access_requests WHERE status = 'pending'")
+    pending_requests = c.fetchone()["n"]
+    c.execute("SELECT COUNT(*) AS n FROM access_requests WHERE status = 'approved'")
+    approved_requests = c.fetchone()["n"]
+    c.execute("SELECT COUNT(DISTINCT username) AS n FROM users")
+    registered_users = c.fetchone()["n"]
+
+    c.execute(
+        "SELECT id, patient_id, filename, encrypted_data, nonce, signature FROM records ORDER BY id"
+    )
+    rows = c.fetchall()
+    records_out = []
+
+    for row in rows:
+        rid = row["id"]
+        enc_b64 = row["encrypted_data"] or ""
+        fingerprint = hashlib.sha256(enc_b64.encode("utf-8")).hexdigest()[:16]
+
+        c.execute("SELECT user_id FROM record_keys WHERE record_id = ?", (rid,))
+        key_holders = [r["user_id"] for r in c.fetchall()]
+
+        c.execute(
+            "SELECT doctor_id, status FROM access_requests WHERE record_id = ?",
+            (rid,),
+        )
+        access_reqs = [
+            {"doctor_id": r["doctor_id"], "status": r["status"]}
+            for r in c.fetchall()
+        ]
+
+        records_out.append(
+            {
+                "id": rid,
+                "patient_id": row["patient_id"],
+                "filename": row["filename"],
+                "ciphertext_fingerprint": fingerprint,
+                "ciphertext_storage_chars": len(enc_b64),
+                "nonce_present": bool(row["nonce"]),
+                "signature_present": bool(row["signature"]),
+                "wrapped_key_holders": key_holders,
+                "access_requests": access_reqs,
+            }
+        )
+
+    conn.close()
+    return jsonify(
+        {
+            "status": "success",
+            "summary": {
+                "total_encrypted_records": total_records,
+                "pending_access_requests": pending_requests,
+                "approved_access_requests": approved_requests,
+                "registered_users": registered_users,
+            },
+            "records": records_out,
+        }
+    )
 
 @app.route('/api/request_access', methods=['POST'])
 def request_access():
